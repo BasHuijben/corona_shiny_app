@@ -1,0 +1,104 @@
+---
+title: "Corona shiny app"
+date: "29-05-2020"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2)
+library(dplyr)
+library(leaflet)
+library(shiny)
+
+source('functions/corona_data.R')
+source('functions/world_map.R')
+
+world_map <- create_world_map()
+corona <- get.corona.data()
+```
+
+## Visualizing corona cases and deaths
+The corona cases and deaths per country are visualised in two different ways
+
+1. Via line charts 
+2. Via geographical plot
+
+
+## Line charts (explanation)
+
+- With the line chart you can compare different countries with each other 
+  + Just simply select the different countries you would like to compare
+  + Choose what you would like to compare:
+    + Number of covid-19 cases
+    + Number of covid-19 deaths
+    + Cumulative number of covid-19 cases 
+    + Cumulative number of covid-19 deaths
+  + You can also compare them relative per 100.000 inhabitants
+
+## Line charts (example)
+
+```{r lineplot, echo=FALSE, warning=FALSE}
+corona %>%
+    filter(country %in% c('Netherlands', 'United_States_of_America') ) %>%
+    ggplot(aes_string(x='dateRep',
+               y='relative_cases',
+               group='country',
+               color='country')) +
+    geom_line() +
+    ylim(0, NA) +
+    xlab('Time') +
+    ylab('Cases per 100.000 inhabitants')
+```
+
+## Geographical plot (explanation)
+
+- With the geographical plot you can visualize the current status of covid-19 pandemic in one figure
+  + Just simply select the different countries you would like to visualize 
+  + The severeness of the pandemic for these specific countries are shown via blue color thones
+
+  
+## Geographical plot (example)
+```{r, echo=FALSE, warning=FALSE}
+
+# prepare corona data
+data <- corona %>%
+    group_by(country) %>%
+    summarise_at(vars(countryterritoryCode, 
+                      total_cases, 
+                      total_deaths, 
+                      relative_total_cases, 
+                      relative_total_deaths), 
+                 funs(last)) %>%
+    mutate(hover = paste0('<b>Country: ', country, '</b><br>',
+                          'Cases: ', total_cases, '<br>', 
+                          'Deaths: ', total_deaths, '<br>', 
+                          'Relative cases: ', round(relative_total_cases, 2), '<br>',
+                          'Relative deaths: ', round(relative_total_deaths, 2), '<br>')) %>%
+    arrange(countryterritoryCode)
+
+# get countries from world nap
+leaflet_data <- subset(world_map, iso3 %in% data$countryterritoryCode)
+data <- data.frame(iso3 = leaflet_data$iso3) %>% 
+    left_join(data, by=c('iso3' = 'countryterritoryCode'))
+
+# set color bins
+bins <- c(0, 30, 60, 90, 120, 150, Inf)
+color.bins <- colorBin('Blues', domain=data$rel_sum_cases, bins=bins)
+
+# create plot
+leaflet(leaflet_data) %>% 
+     addTiles() %>% 
+     addPolygons(weight=1, 
+                 label=lapply(data$hover, HTML), 
+                 fillColor = ~color.bins(data$relative_total_cases),
+                 fillOpacity = 0.8,
+                 color='grey',
+                 highlightOptions = highlightOptions(color = "white", weight = 2, bringToFront = TRUE)) %>%
+    addLegend(position = "bottomleft", 
+              colors = color.bins(bins[1:length(bins)-1]), 
+              labels = bins[1:length(bins)-1],
+              opacity = 0.8,
+              title = "Cases per 100.000 inhabitants")
+```
+
